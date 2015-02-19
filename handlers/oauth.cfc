@@ -1,87 +1,63 @@
 component {
 
-	property name="oauthService" inject="oauthV1Service@oauth";
-	property name="twitterService" inject="twitterService@twitter";
-
 	function preHandler(event,rc,prc){
-		if( !structKeyExists(getSetting('twitter'),'oauth') ){
-			throw('You must define the OAuth setting in your Coldbox.cfc','twitter.setup');
-		}
-		prc.twitterCredentials = getSetting('twitter')['oauth'];
-		prc.twitterSetting = getModuleSettings( module=event.getCurrentModule(), setting="oauth" );
-
-		if(!structKeyExists(session,'twitterOAuth')){
-			session['twitterOAuth'] = structNew();
+		prc.pinterestCredentials = getSetting('pinterest')['oauth'];
+		prc.pinterestSettings = getModuleSettings('nsg-module-pinterest')['oauth'];
+		if(!structKeyExists(session,'pinterestOAuth')){
+			session['pinterestOAuth'] = structNew();
 		}
 	}
 
 	function index(event,rc,prc){
 
-		if( event.getValue('id','') == 'announceUser' ){
-			var results = duplicate(session['twitterOAuth']);
+		if( event.getValue('id','') == 'activateUser' ){
+			var results = duplicate(session['pinterestOAuth']);
 
-			twitterService.setup(results['oauth_token'],results['oauth_token_secret'])
-			var data = twitterService.getUser().show(userID=results['user_id']);
-
-			// add the user data to the announceInterception
+			var httpService = new http();
+				httpService.setURL('https://www.pinterestapis.com/oauth2/v1/userinfo');
+				httpService.addParam(type="url", name='access_token', value=session['pinterestOAuth']['access_token']);
+			var data = deserializeJSON(httpService.send().getPrefix()['fileContent']);
 			structAppend(results,data);
 
-			announceInterception( state='twitterLoginSuccess', interceptData=results );
-			setNextEvent(view=prc.twitterCredentials['loginSuccess'],ssl=( cgi.server_port == 443 ? true : false ));
+			announceInterception( state='pinterestLoginSuccess', interceptData=results );
+			setNextEvent(view=prc.pinterestCredentials['loginSuccess'],ssl=( cgi.server_port == 443 ? true : false ));
 
-		}else if( event.valueExists('oauth_token') ){
-			session['twitterOAuth']['oauth_token'] = event.getValue('oauth_token');
-			session['twitterOAuth']['oauth_verifier'] = event.getValue('oauth_verifier');
+		}else if( event.valueExists('code') ){
+			session['pinterestOAuth']['code'] = event.getValue('code');
 
-			oauthService.init();
-			oauthService.setConsumerKey(prc.twitterCredentials['consumerKey']);
-			oauthService.setConsumerSecret(prc.twitterCredentials['consumerSecret']);
-			oauthService.setRequestURL(prc.twitterSetting['accessRequestURL']);
-			oauthService.setRequestMethod('POST');
-			oauthService.addParam(name="oauth_token",value=session['twitterOAuth']['oauth_token']);
-			oauthService.addParam(name="oauth_verifier",value=session['twitterOAuth']['oauth_verifier']);
-
-			var results = oauthService.send();
+			var httpService = new http();
+				httpService.setMethod('post');
+				httpService.setURL(prc.pinterestSettings['tokenRequestURL']);
+				httpService.addParam(type="formfield",name='code', value=session['pinterestOAuth']['code']);
+				httpService.addParam(type="formfield",name='client_id', value=prc.pinterestCredentials['clientID']);
+				httpService.addParam(type="formfield",name='client_secret', value=prc.pinterestCredentials['clientSecret']);
+				httpService.addParam(type="formfield",name='redirect_uri', value=prc.pinterestCredentials['redirectURL']);
+				httpService.addParam(type="formfield",name='grant_type', value='authorization_code');
+			var results = httpService.send().getPrefix();
 
 			if( results['status_code'] == 200 ){
-				var myFields = listToArray(results['fileContent'],'&');
+				var json = deserializeJSON(results['fileContent']);
 
-				for(var i=1;i<=arrayLen(myFields);i++){
-					session['twitterOAuth'][listFirst(myFields[i],'=')] = listLast(myFields[i],'=');
+				for(var key IN json){
+					session['pinterestOAuth'][key] = json[key];
 				}
-				// redirect to hide any url/code data
-				setNextEvent('twitter/oauth/announceUser');
+
+				setNextEvent('pinterest/oauth/activateUser')
 			}else{
-				announceInterception( state='twitterLoginFailure', interceptData={'request':results} );
-				throw('Unknown Twitter OAuth Error','twitter.access');
+				announceInterception( state='pinterestLoginFailure', interceptData=results );
+				throw('Unknown pinterest OAuth.v2 Error','pinterest.oauth');
 			}
 
 		}else{
+			var httpService = new http();
+				httpService.setMethod('post');
+				httpService.setURL(prc.pinterestSettings['tokenRequestURL']);
+				httpService.addParam(type="formfield",name='consumer_id', value=prc.pinterestCredentials['appID']);
+				httpService.addParam(type="formfield",name='response_type', value='token');
+			var results = httpService.send().getPrefix();
+writedump(results);abort;
 
-			oauthService.init();
-			oauthService.setConsumerKey(prc.twitterCredentials['consumerKey']);
-			oauthService.setConsumerSecret(prc.twitterCredentials['consumerSecret']);
-			oauthService.setRequestURL(prc.twitterSetting['tokenRequestURL']);
-			oauthService.setRequestMethod('POST');
-
-			oauthService.addParam(name="oauth_callback",value=prc.twitterCredentials['callbackURL']);
-
-			var results = oauthService.send();
-
-			if( results['status_code'] == 200 ){
-				var myFields = listToArray(results['fileContent'],'&');
-
-				for(var i=1;i<=arrayLen(myFields);i++){
-					session['twitterOAuth'][listFirst(myFields[i],'=')] = listLast(myFields[i],'=');
-				}
-
-				location(url=prc.twitterSetting['authorizeRequestURL'] & "?oauth_token=#session['twitterOAuth']['oauth_token']#",addToken=false);
-
-			}else{
-				announceInterception( state='twitterLoginFailure', interceptData={'request':results} );
-				throw('Unknown Twiter OAuth Error','twitter.request');
-			}
+			location(url="#prc.pinterestSettings['authorizeRequestURL']#?client_id=#prc.pinterestCredentials['clientID']#&redirect_uri=#urlEncodedFormat(prc.pinterestCredentials['redirectURL'])#&scope=#prc.pinterestCredentials['scope']#&response_type=#prc.pinterestCredentials['responseType']#&approval_prompt=#prc.pinterestCredentials['approvalPrompt']#&access_type=#prc.pinterestCredentials['accessType']#",addtoken=false);
 		}
 	}
-
 }

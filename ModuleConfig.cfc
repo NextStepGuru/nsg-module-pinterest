@@ -71,11 +71,11 @@ component {
 	*/
 	function onLoad(){
 		var nsgSocialLogin = controller.getSetting('nsgSocialLogin',false,arrayNew());
-			arrayAppend(nsgSocialLogin,{"name":"pinterest","icon":"pinterest","title":"pinterest"});
+			arrayAppend(nsgSocialLogin,{"name":"pinterest","icon":"pinterest","title":"Pinterest"});
 			controller.setSetting('nsgSocialLogin',nsgSocialLogin);
 		var nsgMenu = controller.getSetting('nsgMenu',false,[]);
 		// menu::login
-		arrayAppend(nsgMenu,{ "menu"="topRight","subid":"login","icon"="fa fa-pinterest","id":"pinterest","title":"Sign-in with pinterest","link":"/security/login/pinterest","roles":"","type":"link","isUserLoggedIn":false });
+		arrayAppend(nsgMenu,{ "menu"="topRight","subid":"login","icon"="fa fa-pinterest","id":"pinterest","title":"Sign-in with Pinterest","link":"/security/login/pinterest","roles":"","type":"link","isUserLoggedIn":false });
 	}
 
 	/**
